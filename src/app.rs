@@ -3,6 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::network::NetworkInfo;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::DefaultTerminal;
 
@@ -11,6 +12,7 @@ use crate::ui;
 pub struct App {
     running: bool,
     started_at: Instant,
+    pub network: NetworkInfo,
 }
 
 //App functions
@@ -20,6 +22,7 @@ impl App {
         Self {
             running: true,
             started_at: Instant::now(),
+            network: NetworkInfo::discover(),
         }
     }
 
