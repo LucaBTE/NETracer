@@ -1,4 +1,5 @@
 mod app;
+mod network;
 mod ui;
 
 use std::io;

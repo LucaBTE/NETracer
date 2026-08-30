@@ -18,12 +18,32 @@ pub fn render(frame: &mut Frame, app: &App) {
 
     let uptime = app.uptime().as_secs();
 
+    let interface = app.network.interface.as_deref().unwrap_or("N/A");
+    let ipv4 = app.network.ipv4.as_deref().unwrap_or("N/A");
+    let gateway = app.network.gateway.as_deref().unwrap_or("N/A");
+
+    let link_status = if app.network.has_link() {
+        "ACTIVE"
+    } else {
+        "UNAVAILABLE"
+    };
+
     let header = Paragraph::new("NETracer // NETWORK DIAGNOSIS")
         .alignment(Alignment::Center)
         .block(Block::new().borders(Borders::ALL));
 
     let body = Paragraph::new(format!(
-        "\nSYSTEM READY\n\nUPTIME: {uptime}s\n\nNetwork diagnostics module awaiting initialization."
+        "\
+    \nSYSTEM READY
+
+    HOSTNAME     {}
+    INTERFACE    {}
+    IPv4         {}
+    GATEWAY      {}
+    LINK         {}
+
+    UPTIME       {}s",
+        app.network.hostname, interface, ipv4, gateway, link_status, uptime,
     ))
     .alignment(Alignment::Center)
     .block(Block::new().title(" NODE STATUS ").borders(Borders::ALL));
