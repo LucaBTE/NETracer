@@ -1,120 +1,305 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
-    style::Style,
+    style::{Color, Modifier, Style},
+    symbols::Marker,
     text::{Line, Span},
-    widgets::{Block, Borders, Padding, Paragraph},
+    widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, Paragraph},
 };
 
-use crate::{network::interfaces::NetworkInfo, theme};
+use crate::theme;
 
-pub(super) fn render(frame: &mut Frame, area: Rect, network: &NetworkInfo, uptime: Duration) {
-    let [summary, content] =
-        Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(area);
-    let [identity, connection] =
-        Layout::horizontal([Constraint::Percentage(42), Constraint::Percentage(58)]).areas(content);
+use super::model::{Rates, TrafficModel, TrafficSeries};
 
-    let (status, status_color) = if network.has_link() {
-        ("ONLINE", theme::current().green)
-    } else {
-        ("UNAVAILABLE", theme::current().red)
-    };
+pub(super) fn render(
+    frame: &mut Frame,
+    area: Rect,
+    hostname: &str,
+    uptime: Duration,
+    traffic: &TrafficModel,
+    list_area: &mut Rect,
+    list_offset: &mut usize,
+) {
+    let [interfaces, dashboard] =
+        Layout::horizontal([Constraint::Length(21), Constraint::Min(44)]).areas(area);
+    let [information, graphs, statistics] = Layout::vertical([
+        Constraint::Length(6),
+        Constraint::Min(7),
+        Constraint::Length(3),
+    ])
+    .areas(dashboard);
+    let [rx_graph, tx_graph] =
+        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(graphs);
 
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::styled(
-                " NETWORK STATUS  ",
+    render_interfaces(frame, interfaces, traffic, list_offset);
+    *list_area = interfaces;
+    render_information(frame, information, hostname, uptime, traffic);
+
+    let series = traffic.selected_series();
+    render_chart(frame, rx_graph, series, true);
+    render_chart(frame, tx_graph, series, false);
+    render_statistics(frame, statistics, series);
+}
+
+fn render_interfaces(frame: &mut Frame, area: Rect, traffic: &TrafficModel, offset: &mut usize) {
+    let palette = theme::current();
+    let visible = usize::from(area.height.saturating_sub(2)).max(1);
+    let count = traffic.choices().count();
+    *offset = traffic
+        .selected_index()
+        .saturating_sub(visible - 1)
+        .min(count.saturating_sub(visible));
+
+    let rows = traffic
+        .choices()
+        .enumerate()
+        .skip(*offset)
+        .take(visible)
+        .map(|(index, name)| {
+            let selected = index == traffic.selected_index();
+            let available = index == 0 || traffic.interface(name).is_some();
+            let marker = if selected {
+                "▶"
+            } else if available {
+                "●"
+            } else {
+                "○"
+            };
+            let style = if selected {
                 Style::default()
-                    .fg(theme::current().void)
-                    .bg(status_color)
-                    .bold(),
-            ),
-            Span::styled(
-                format!("  {status}"),
-                Style::default().fg(status_color).bold(),
-            ),
-            Span::styled("    SESSION  ", theme::label()),
-            Span::styled(
-                format_duration(uptime),
-                Style::default().fg(theme::current().text),
-            ),
-        ]))
-        .style(Style::default().bg(theme::current().panel))
-        .block(panel("[ SYSTEM STATUS ]")),
-        summary,
+                    .fg(palette.text)
+                    .bg(palette.grid)
+                    .add_modifier(Modifier::BOLD)
+            } else if available {
+                Style::default().fg(palette.text)
+            } else {
+                Style::default().fg(palette.muted)
+            };
+            Line::from(format!(" {marker} {name}")).style(style)
+        })
+        .collect::<Vec<_>>();
+
+    frame.render_widget(
+        Paragraph::new(rows)
+            .style(Style::default().bg(palette.panel))
+            .block(panel("[ TRAFFIC SOURCES ]")),
+        area,
     );
+}
+
+fn render_information(
+    frame: &mut Frame,
+    area: Rect,
+    hostname: &str,
+    uptime: Duration,
+    traffic: &TrafficModel,
+) {
+    let palette = theme::current();
+    let interface = traffic.selected_interface();
+    let configured = interface.is_some_and(|item| !item.ipv4.is_empty());
+    let (state, state_color) = if traffic.is_general() {
+        ("AGGREGATE", palette.cyan)
+    } else if interface.is_none() {
+        ("UNAVAILABLE", palette.red)
+    } else if configured {
+        ("CONFIGURED", palette.green)
+    } else {
+        ("NO ADDRESS", palette.orange)
+    };
+    let address = interface
+        .and_then(|item| item.ipv4.first())
+        .map(String::as_str)
+        .unwrap_or(if traffic.is_general() {
+            "All interfaces"
+        } else {
+            "Not available"
+        });
+    let gateway = interface
+        .and_then(|item| item.gateway.as_deref())
+        .unwrap_or(if traffic.is_general() {
+            "Multiple / none"
+        } else {
+            "Not available"
+        });
 
     frame.render_widget(
         Paragraph::new(vec![
-            field("Hostname", &network.hostname),
-            Line::default(),
-            Line::from(Span::styled(
-                "LOCAL NODE // STARTUP SNAPSHOT",
-                Style::default().fg(theme::current().muted),
-            )),
-        ])
-        .style(Style::default().bg(theme::current().panel))
-        .block(panel("[ NODE IDENTITY ]").padding(Padding::new(1, 1, 1, 0))),
-        identity,
-    );
-
-    frame.render_widget(
-        Paragraph::new(vec![
-            field(
-                "Interface",
-                network.interface.as_deref().unwrap_or("Not detected"),
-            ),
-            field(
-                "IPv4 address",
-                network.ipv4.as_deref().unwrap_or("Not assigned"),
-            ),
-            field(
-                "Gateway",
-                network.gateway.as_deref().unwrap_or("Not detected"),
-            ),
-            Line::default(),
             Line::from(vec![
-                Span::styled("● ", Style::default().fg(status_color)),
+                field("SOURCE", traffic.selected_name(), palette.cyan),
+                field("STATE", state, state_color),
+            ]),
+            Line::from(vec![
+                field("HOST", hostname, palette.text),
+                field("UPTIME", &format_duration(uptime), palette.muted),
+            ]),
+            Line::from(vec![
+                field("IPv4", address, palette.text),
+                field("GW", gateway, palette.text),
+            ]),
+            Line::from(vec![
+                Span::styled(" STATUS ", Style::default().fg(palette.muted)),
                 Span::styled(
-                    if network.has_link() {
-                        "Interface configured"
-                    } else {
-                        "No configured network interface"
-                    },
-                    Style::default().fg(theme::current().text),
+                    traffic.selected_series().status.as_str(),
+                    Style::default().fg(palette.muted),
                 ),
             ]),
-            Line::from(Span::styled(
-                "  HOST ─── INTERFACE ─── GATEWAY ─── WAN",
-                Style::default().fg(theme::current().muted),
-            )),
         ])
-        .style(Style::default().bg(theme::current().panel))
-        .block(panel("[ NETWORK LINK ]").padding(Padding::new(1, 1, 1, 0))),
-        connection,
+        .style(Style::default().bg(palette.panel))
+        .block(panel("[ SOURCE INFORMATION ]")),
+        area,
     );
 }
 
-fn panel(title: &'static str) -> Block<'static> {
-    Block::default()
-        .title(title)
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::current().grid))
+fn render_chart(frame: &mut Frame, area: Rect, series: &TrafficSeries, receive: bool) {
+    let palette = theme::current();
+    let maximum = series
+        .history()
+        .iter()
+        .filter_map(|point| point.rates)
+        .map(|rates| rate_value(rates, receive))
+        .fold(0.0_f64, f64::max);
+    let (divisor, unit) = rate_scale(maximum);
+    let upper = (maximum / divisor).max(1.0) * 1.1;
+    let segments = graph_segments(series, receive, divisor);
+    let color = if receive {
+        palette.cyan
+    } else {
+        palette.orange
+    };
+    let datasets = segments
+        .iter()
+        .map(|segment| {
+            Dataset::default()
+                .marker(Marker::Braille)
+                .graph_type(GraphType::Line)
+                .style(Style::default().fg(color))
+                .data(segment)
+        })
+        .collect::<Vec<_>>();
+
+    frame.render_widget(
+        Chart::new(datasets)
+            .block(panel(if receive {
+                "[ RX // LAST 120 SECONDS ]"
+            } else {
+                "[ TX // LAST 120 SECONDS ]"
+            }))
+            .x_axis(
+                Axis::default()
+                    .bounds([0.0, 120.0])
+                    .style(Style::default().fg(palette.grid))
+                    .labels(["-120s", "-60s", "now"]),
+            )
+            .y_axis(
+                Axis::default()
+                    .title(unit)
+                    .bounds([0.0, upper])
+                    .style(Style::default().fg(palette.muted))
+                    .labels(["0".to_owned(), format_value(upper)]),
+            ),
+        area,
+    );
 }
 
-fn field(label: &'static str, value: &str) -> Line<'static> {
-    Line::from(vec![
+fn render_statistics(frame: &mut Frame, area: Rect, series: &TrafficSeries) {
+    let [rx, tx] =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(area);
+    frame.render_widget(
+        metric_line(
+            series.current.map(|rates| rates.rx_bytes_per_second),
+            series.total_rx,
+            series.peak_rx,
+            theme::current().cyan,
+        )
+        .block(panel("[ RX RECEIVED ]")),
+        rx,
+    );
+    frame.render_widget(
+        metric_line(
+            series.current.map(|rates| rates.tx_bytes_per_second),
+            series.total_tx,
+            series.peak_tx,
+            theme::current().orange,
+        )
+        .block(panel("[ TX TRANSMITTED ]")),
+        tx,
+    );
+}
+
+fn metric_line(current: Option<f64>, total: u64, peak: f64, color: Color) -> Paragraph<'static> {
+    let current = current.map(format_rate).unwrap_or_else(|| "N/A".into());
+    Paragraph::new(Line::from(vec![
+        Span::styled(format!(" NOW {current}"), Style::default().fg(color).bold()),
         Span::styled(
-            format!("{label:<14}"),
-            Style::default().fg(theme::current().muted),
+            format!(
+                "  TOTAL {}  PEAK {}",
+                format_bytes(total),
+                format_rate(peak)
+            ),
+            Style::default().fg(theme::current().text),
         ),
-        Span::styled(
-            value.to_owned(),
-            Style::default().fg(theme::current().cyan).bold(),
-        ),
-    ])
+    ]))
+}
+
+fn graph_segments(series: &TrafficSeries, receive: bool, divisor: f64) -> Vec<Vec<(f64, f64)>> {
+    let now = Instant::now();
+    let mut segments = Vec::new();
+    let mut current = Vec::new();
+    for point in series.history() {
+        if let Some(rates) = point.rates {
+            let age = now.saturating_duration_since(point.at).as_secs_f64();
+            if age <= 120.0 {
+                current.push((120.0 - age, rate_value(rates, receive) / divisor));
+            }
+        } else if !current.is_empty() {
+            segments.push(std::mem::take(&mut current));
+        }
+    }
+    if !current.is_empty() {
+        segments.push(current);
+    }
+    segments
+}
+
+fn rate_value(rates: Rates, receive: bool) -> f64 {
+    if receive {
+        rates.rx_bytes_per_second
+    } else {
+        rates.tx_bytes_per_second
+    }
+}
+
+fn rate_scale(value: f64) -> (f64, &'static str) {
+    if value >= 1024.0 * 1024.0 {
+        (1024.0 * 1024.0, "MiB/s")
+    } else {
+        (1024.0, "KiB/s")
+    }
+}
+
+fn format_rate(value: f64) -> String {
+    let (divisor, unit) = rate_scale(value);
+    format!("{:.1} {unit}", value / divisor)
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const MIB: f64 = 1024.0 * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    if bytes as f64 >= GIB {
+        format!("{:.2} GiB", bytes as f64 / GIB)
+    } else {
+        format!("{:.2} MiB", bytes as f64 / MIB)
+    }
+}
+
+fn format_value(value: f64) -> String {
+    if value >= 10.0 {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    }
 }
 
 fn format_duration(duration: Duration) -> String {
@@ -125,4 +310,16 @@ fn format_duration(duration: Duration) -> String {
         (seconds / 60) % 60,
         seconds % 60
     )
+}
+
+fn field(label: &'static str, value: &str, color: Color) -> Span<'static> {
+    Span::styled(format!(" {label} {value}  "), Style::default().fg(color))
+}
+
+fn panel(title: &'static str) -> Block<'static> {
+    Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::current().grid))
+        .style(Style::default().bg(theme::current().panel))
 }

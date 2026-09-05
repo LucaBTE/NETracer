@@ -25,12 +25,12 @@ pub(crate) fn render(
         component.reset_layout();
     }
 
-    if frame.area().width < 65 || frame.area().height < 26 {
+    if frame.area().width < 65 || frame.area().height < 30 {
         frame.render_widget(
             Paragraph::new(vec![
                 Line::from(Span::styled("[ DISPLAY LINK FAILURE ]", theme::label())),
                 Line::from(Span::styled(
-                    "MINIMUM GRID: 65 × 26  //  CTRL+C TO ABORT",
+                    "MINIMUM GRID: 65 × 30  //  CTRL+C TO ABORT",
                     Style::default().fg(theme::current().muted),
                 )),
             ])

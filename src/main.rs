@@ -5,7 +5,7 @@ use netracer::{app::App, tabs, terminal::TerminalSession};
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let mut app = App::new(tabs::builtins())?;
-    app.select("ping")?;
+    app.select("overview")?;
 
     let mut terminal = TerminalSession::new()?;
 
