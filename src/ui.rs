@@ -1,225 +1,133 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Layout, Rect},
-    style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Paragraph, Row, Table, Tabs, Wrap},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{Block, Borders, Paragraph},
 };
 
-use crate::app::App;
+use crate::{components::Component, theme};
 
-pub fn render(frame: &mut Frame, app: &mut App) {
-    app.input_area = Rect::default();
-    app.table_area = Rect::default();
+const LOGO: [&str; 5] = [
+    r" _   _ _____ _____                         ",
+    r"| \ | | ____|_   _| __ __ _  ___ ___ _ __ ",
+    r"|  \| |  _|   | || '__/ _` |/ __/ _ \ '__|",
+    r"| |\  | |___  | || | | (_| | (_|  __/ |   ",
+    r"|_| \_|_____| |_||_|  \__,_|\___\___|_|   ",
+];
 
-    if frame.area().width < 65 || frame.area().height < 22 {
-        frame.render_widget(
-            Paragraph::new("Resize the terminal to at least 65 columns x 22 rows."),
-            frame.area(),
-        );
-        return;
+pub(crate) fn render(
+    frame: &mut Frame,
+    components: &mut [Box<dyn Component>],
+    active: usize,
+) -> Vec<Rect> {
+    frame.render_widget(Block::default().style(theme::base()), frame.area());
+    for component in components.iter_mut() {
+        component.reset_layout();
     }
 
-    let [tabs_area, body_area, footer_area] = Layout::vertical([
+    if frame.area().width < 65 || frame.area().height < 26 {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled("[ DISPLAY LINK FAILURE ]", theme::label())),
+                Line::from(Span::styled(
+                    "MINIMUM GRID: 65 × 26  //  CTRL+C TO ABORT",
+                    Style::default().fg(theme::MUTED),
+                )),
+            ])
+            .alignment(Alignment::Center),
+            frame.area(),
+        );
+        return Vec::new();
+    }
+
+    let [masthead, tabs, body, footer] = Layout::vertical([
+        Constraint::Length(6),
         Constraint::Length(3),
-        Constraint::Min(1),
+        Constraint::Min(14),
         Constraint::Length(3),
     ])
     .areas(frame.area());
 
-    let tabs = Tabs::new(vec!["[1] Overview", "[2] Ping"])
-        .select(app.tab)
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-        .block(
-            Block::default()
-                .title(" NETracer // NETWORK DIAGNOSIS ")
-                .borders(Borders::ALL),
-        );
-
-    frame.render_widget(tabs, tabs_area);
-
-    if app.tab == 0 {
-        render_overview(frame, app, body_area);
-    } else {
-        render_ping(frame, app, body_area);
-    }
-
-    let help = if app.editing {
-        "Enter: Ping   Esc: Cancel input   Ctrl+C: Quit"
-    } else if app.tab == 1 {
-        "/: New target   Up/Down: Select   Enter/Click: Ping\nDel: Remove   Tab: Switch tab   Q: Quit"
-    } else {
-        "Tab: Switch tab   2: Ping   Q: Quit"
-    };
-
-    frame.render_widget(
-        Paragraph::new(help).block(Block::default().borders(Borders::ALL)),
-        footer_area,
-    );
-}
-
-fn render_overview(frame: &mut Frame, app: &App, area: Rect) {
-    let interface = app.network.interface.as_deref().unwrap_or("N/A");
-    let ipv4 = app.network.ipv4.as_deref().unwrap_or("N/A");
-    let gateway = app.network.gateway.as_deref().unwrap_or("N/A");
-
-    let link = if app.network.has_link() {
-        "ACTIVE"
-    } else {
-        "UNAVAILABLE"
-    };
-
-    let text = format!(
-        "HOSTNAME     {}\n\
-         INTERFACE    {}\n\
-         IPv4         {}\n\
-         GATEWAY      {}\n\
-         LINK         {}\n\n\
-         UPTIME       {}s",
-        app.network.hostname,
-        interface,
-        ipv4,
-        gateway,
-        link,
-        app.uptime().as_secs(),
-    );
-
-    frame.render_widget(
-        Paragraph::new(text).block(Block::default().title(" Overview ").borders(Borders::ALL)),
-        area,
-    );
-}
-
-fn render_ping(frame: &mut Frame, app: &mut App, area: Rect) {
-    let [input_area, table_area, details_area, message_area] = Layout::vertical([
-        Constraint::Length(3),
-        Constraint::Min(4),
-        Constraint::Length(7),
-        Constraint::Length(2),
-    ])
-    .areas(area);
-
-    app.input_area = input_area;
-    app.table_area = table_area;
-
-    let input_style = if app.editing {
-        Style::default().fg(Color::Cyan)
-    } else {
-        Style::default()
-    };
-
-    let input_text = if app.input.is_empty() && !app.editing {
-        "Press / or click here to enter an IP address or hostname".to_string()
-    } else {
-        app.input.clone()
-    };
-
-    let inner_width = usize::from(input_area.width.saturating_sub(2));
-    let scroll = if app.editing {
-        app.input
-            .len()
-            .saturating_sub(inner_width.saturating_sub(1))
-    } else {
-        0
-    };
-
-    frame.render_widget(
-        Paragraph::new(input_text).scroll((0, scroll as u16)).block(
-            Block::default()
-                .title(" IP address or hostname ")
-                .borders(Borders::ALL)
-                .border_style(input_style),
-        ),
-        input_area,
-    );
-
-    if app.editing {
-        let cursor = app.input.len().saturating_sub(scroll) as u16;
-        frame.set_cursor_position((input_area.x + 1 + cursor, input_area.y + 1));
-    }
-
-    let rows: Vec<Row<'static>> = app
-        .entries
+    let logo = LOGO
         .iter()
-        .map(|entry| {
-            let latency = entry
-                .latency
-                .map(|value| format!("{value:.2} ms"))
-                .unwrap_or_else(|| "-".into());
-
-            let last_run = entry
-                .last_run
-                .map(|time| format!("{}s ago", time.elapsed().as_secs()))
-                .unwrap_or_else(|| "-".into());
-
-            let status = if entry.status.starts_with("Error:") {
-                "Error".to_string()
-            } else {
-                entry.status.clone()
-            };
-
-            Row::new(vec![
-                entry.target.clone(),
-                status,
-                latency,
-                last_run,
-                "[Ping]".into(),
-            ])
+        .map(|row| {
+            Line::from(Span::styled(
+                *row,
+                Style::default()
+                    .fg(theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ))
         })
-        .collect();
-
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Fill(1),
-            Constraint::Length(15),
-            Constraint::Length(12),
-            Constraint::Length(11),
-            Constraint::Length(6),
-        ],
-    )
-    .header(
-        Row::new(vec!["Target", "Status", "Latency", "Last run", "Action"])
-            .style(Style::default().fg(Color::Cyan)),
-    )
-    .row_highlight_style(
-        Style::default()
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD),
-    )
-    .block(
-        Block::default()
-            .title(" Recent targets ")
-            .borders(Borders::ALL),
+        .collect::<Vec<_>>();
+    frame.render_widget(
+        Paragraph::new(logo)
+            .alignment(Alignment::Center)
+            .style(Style::default().bg(theme::VOID)),
+        masthead,
     );
 
-    frame.render_stateful_widget(table, table_area, &mut app.table_state);
+    let tab_block = Block::default()
+        .title(Span::styled(
+            "[ NETWORK ENDPOINT TRACER // CONTROL DECK ]",
+            Style::default().fg(theme::MUTED),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::GRID))
+        .style(Style::default().bg(theme::PANEL));
+    let tab_inner = tab_block.inner(tabs);
+    frame.render_widget(tab_block, tabs);
 
-    let details = app
-        .table_state
-        .selected()
-        .and_then(|index| app.entries.get(index))
-        .map(|entry| entry.statistics())
-        .unwrap_or_else(|| {
-            "No recent targets.\nPress / to enter a destination and run your first ping.".into()
-        });
+    let tab_areas = Layout::horizontal(vec![Constraint::Fill(1); components.len()])
+        .split(tab_inner)
+        .to_vec();
+    for (index, component) in components.iter().enumerate() {
+        let (prefix, style) = if index == active {
+            (
+                ">",
+                Style::default()
+                    .fg(theme::VOID)
+                    .bg(theme::CYAN)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            (" ", Style::default().fg(theme::TEXT).bg(theme::PANEL))
+        };
+        frame.render_widget(
+            Paragraph::new(format!(
+                " {prefix} F{}  {} ",
+                index + 1,
+                component.title().to_uppercase()
+            ))
+            .style(style)
+            .alignment(Alignment::Center),
+            tab_areas[index],
+        );
+    }
 
-    frame.render_widget(
-        Paragraph::new(details).wrap(Wrap { trim: false }).block(
-            Block::default()
-                .title(" Selected target // session statistics ")
-                .borders(Borders::ALL),
+    components[active].render(frame, body);
+
+    let footer_text = Line::from(vec![
+        Span::styled(
+            " READY ",
+            Style::default()
+                .fg(theme::VOID)
+                .bg(theme::GREEN)
+                .add_modifier(Modifier::BOLD),
         ),
-        details_area,
+        Span::styled("  ", theme::base()),
+        Span::styled(components[active].help(), Style::default().fg(theme::TEXT)),
+        Span::styled("  │  TAB: module ", Style::default().fg(theme::MUTED)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(footer_text).block(
+            Block::default()
+                .title("[ COMMAND LINE ]")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::GRID)),
+        ),
+        footer,
     );
 
-    frame.render_widget(
-        Paragraph::new(app.message.as_str())
-            .style(Style::default().fg(Color::Yellow))
-            .wrap(Wrap { trim: false }),
-        message_area,
-    );
+    tab_areas
 }
