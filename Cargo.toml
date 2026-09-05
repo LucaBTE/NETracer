@@ -1,7 +1,11 @@
 [package]
 name = "netracer"
-version = "0.1.0"
+version = "0.1.0-alpha.1"
 edition = "2024"
+description = "Terminal-based network monitoring and diagnostics."
+license = "Apache-2.0"
+repository = "https://github.com/LucaBTE/NETracer"
+readme = "README.md"
 
 [dependencies]
 crossterm = { version = "0.29.0", features = ["event-stream"] }
