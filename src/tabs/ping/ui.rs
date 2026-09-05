@@ -36,20 +36,29 @@ pub(super) fn render(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
 
     frame.render_widget(
         Paragraph::new(text)
-            .style(Style::default().fg(theme::TEXT).bg(theme::PANEL_ACTIVE))
+            .style(
+                Style::default()
+                    .fg(theme::current().text)
+                    .bg(theme::current().panel_active),
+            )
             .wrap(Wrap { trim: false })
             .block(
                 Block::default()
                     .title("[ TARGET TELEMETRY ]")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::GRID)),
+                    .border_style(Style::default().fg(theme::current().grid)),
             ),
         details,
     );
 
     frame.render_widget(
         Paragraph::new(tab.message.as_str())
-            .style(Style::default().fg(theme::ORANGE).bg(theme::VOID).bold())
+            .style(
+                Style::default()
+                    .fg(theme::current().orange)
+                    .bg(theme::current().void)
+                    .bold(),
+            )
             .wrap(Wrap { trim: false }),
         message,
     );
@@ -69,9 +78,9 @@ fn render_input(frame: &mut Frame, area: Rect, tab: &PingTab) {
     };
 
     let border_color = if tab.editing {
-        theme::CYAN
+        theme::current().cyan
     } else {
-        theme::MUTED
+        theme::current().muted
     };
 
     frame.render_widget(
@@ -79,11 +88,11 @@ fn render_input(frame: &mut Frame, area: Rect, tab: &PingTab) {
             .style(
                 Style::default()
                     .fg(if tab.editing {
-                        theme::CYAN
+                        theme::current().cyan
                     } else {
-                        theme::ORANGE
+                        theme::current().orange
                     })
-                    .bg(theme::PANEL_ACTIVE),
+                    .bg(theme::current().panel_active),
             )
             .scroll((0, scroll as u16))
             .block(
@@ -132,17 +141,18 @@ fn render_table(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
                 .unwrap_or_else(|| "-".into());
 
             Row::new(vec![
-                Cell::from(format!("  {}", entry.target)).style(Style::default().fg(theme::TEXT)),
+                Cell::from(format!("  {}", entry.target))
+                    .style(Style::default().fg(theme::current().text)),
                 Cell::from(status(&entry.state)).style(status_style(&entry.state)),
-                Cell::from(milliseconds(latency)).style(Style::default().fg(theme::CYAN)),
-                Cell::from(last_run).style(Style::default().fg(theme::MUTED)),
+                Cell::from(milliseconds(latency)).style(Style::default().fg(theme::current().cyan)),
+                Cell::from(last_run).style(Style::default().fg(theme::current().muted)),
                 Cell::from("PING").style(
                     Style::default()
-                        .fg(theme::ORANGE)
+                        .fg(theme::current().orange)
                         .add_modifier(Modifier::BOLD),
                 ),
             ])
-            .style(Style::default().bg(theme::PANEL))
+            .style(Style::default().bg(theme::current().panel))
         })
         .collect::<Vec<_>>();
 
@@ -157,13 +167,17 @@ fn render_table(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
         ],
     )
     .header(
-        Row::new(["  TARGET", "STATUS", "LATENCY", "LAST RUN", "ACTION"])
-            .style(Style::default().fg(theme::VOID).bg(theme::TEXT).bold()),
+        Row::new(["  TARGET", "STATUS", "LATENCY", "LAST RUN", "ACTION"]).style(
+            Style::default()
+                .fg(theme::current().void)
+                .bg(theme::current().text)
+                .bold(),
+        ),
     )
     .row_highlight_style(
         Style::default()
-            .fg(theme::TEXT)
-            .bg(theme::GRID)
+            .fg(theme::current().text)
+            .bg(theme::current().grid)
             .add_modifier(Modifier::BOLD),
     )
     .block(
@@ -171,9 +185,9 @@ fn render_table(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
             .title("[ RECENT TARGETS // PROBE QUEUE ]")
             .title_bottom("[ ↑/↓ SELECT ][ ENTER PING ][ DEL REMOVE ]")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::GRID)),
+            .border_style(Style::default().fg(theme::current().grid)),
     )
-    .style(Style::default().bg(theme::PANEL));
+    .style(Style::default().bg(theme::current().panel));
 
     frame.render_stateful_widget(table, area, &mut tab.table_state);
 }
@@ -194,14 +208,14 @@ fn status(state: &ProbeState) -> &'static str {
 
 fn status_style(state: &ProbeState) -> Style {
     let color = match state {
-        ProbeState::Ready => theme::MUTED,
-        ProbeState::Running => theme::ORANGE,
-        ProbeState::Finished(PingOutcome::Reply { .. }) => theme::GREEN,
-        ProbeState::Finished(PingOutcome::NoReply | PingOutcome::Error(_)) => theme::RED,
+        ProbeState::Ready => theme::current().muted,
+        ProbeState::Running => theme::current().orange,
+        ProbeState::Finished(PingOutcome::Reply { .. }) => theme::current().green,
+        ProbeState::Finished(PingOutcome::NoReply | PingOutcome::Error(_)) => theme::current().red,
     };
     Style::default()
         .fg(color)
-        .bg(theme::PANEL)
+        .bg(theme::current().panel)
         .add_modifier(Modifier::BOLD)
 }
 

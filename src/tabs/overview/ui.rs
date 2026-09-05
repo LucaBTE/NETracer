@@ -17,25 +17,31 @@ pub(super) fn render(frame: &mut Frame, area: Rect, network: &NetworkInfo, uptim
         Layout::horizontal([Constraint::Percentage(42), Constraint::Percentage(58)]).areas(content);
 
     let (status, status_color) = if network.has_link() {
-        ("ONLINE", theme::GREEN)
+        ("ONLINE", theme::current().green)
     } else {
-        ("UNAVAILABLE", theme::RED)
+        ("UNAVAILABLE", theme::current().red)
     };
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(
                 " NETWORK STATUS  ",
-                Style::default().fg(theme::VOID).bg(status_color).bold(),
+                Style::default()
+                    .fg(theme::current().void)
+                    .bg(status_color)
+                    .bold(),
             ),
             Span::styled(
                 format!("  {status}"),
                 Style::default().fg(status_color).bold(),
             ),
             Span::styled("    SESSION  ", theme::label()),
-            Span::styled(format_duration(uptime), Style::default().fg(theme::TEXT)),
+            Span::styled(
+                format_duration(uptime),
+                Style::default().fg(theme::current().text),
+            ),
         ]))
-        .style(Style::default().bg(theme::PANEL))
+        .style(Style::default().bg(theme::current().panel))
         .block(panel("[ SYSTEM STATUS ]")),
         summary,
     );
@@ -46,10 +52,10 @@ pub(super) fn render(frame: &mut Frame, area: Rect, network: &NetworkInfo, uptim
             Line::default(),
             Line::from(Span::styled(
                 "LOCAL NODE // STARTUP SNAPSHOT",
-                Style::default().fg(theme::MUTED),
+                Style::default().fg(theme::current().muted),
             )),
         ])
-        .style(Style::default().bg(theme::PANEL))
+        .style(Style::default().bg(theme::current().panel))
         .block(panel("[ NODE IDENTITY ]").padding(Padding::new(1, 1, 1, 0))),
         identity,
     );
@@ -77,15 +83,15 @@ pub(super) fn render(frame: &mut Frame, area: Rect, network: &NetworkInfo, uptim
                     } else {
                         "No configured network interface"
                     },
-                    Style::default().fg(theme::TEXT),
+                    Style::default().fg(theme::current().text),
                 ),
             ]),
             Line::from(Span::styled(
                 "  HOST ─── INTERFACE ─── GATEWAY ─── WAN",
-                Style::default().fg(theme::MUTED),
+                Style::default().fg(theme::current().muted),
             )),
         ])
-        .style(Style::default().bg(theme::PANEL))
+        .style(Style::default().bg(theme::current().panel))
         .block(panel("[ NETWORK LINK ]").padding(Padding::new(1, 1, 1, 0))),
         connection,
     );
@@ -95,13 +101,19 @@ fn panel(title: &'static str) -> Block<'static> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(theme::GRID))
+        .border_style(Style::default().fg(theme::current().grid))
 }
 
 fn field(label: &'static str, value: &str) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("{label:<14}"), Style::default().fg(theme::MUTED)),
-        Span::styled(value.to_owned(), Style::default().fg(theme::CYAN).bold()),
+        Span::styled(
+            format!("{label:<14}"),
+            Style::default().fg(theme::current().muted),
+        ),
+        Span::styled(
+            value.to_owned(),
+            Style::default().fg(theme::current().cyan).bold(),
+        ),
     ])
 }
 
