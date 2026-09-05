@@ -1,58 +1,133 @@
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Layout},
+    layout::{Alignment, Constraint, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 
-use crate::app::App;
+use crate::{components::Component, theme};
 
-pub fn render(frame: &mut Frame, app: &App) {
-    //divides into three main areas
+const LOGO: [&str; 5] = [
+    r" _   _ _____ _____                         ",
+    r"| \ | | ____|_   _| __ __ _  ___ ___ _ __ ",
+    r"|  \| |  _|   | || '__/ _` |/ __/ _ \ '__|",
+    r"| |\  | |___  | || | | (_| | (_|  __/ |   ",
+    r"|_| \_|_____| |_||_|  \__,_|\___\___|_|   ",
+];
 
-    let [header_area, body_area, footer_area] = Layout::vertical([
+pub(crate) fn render(
+    frame: &mut Frame,
+    components: &mut [Box<dyn Component>],
+    active: usize,
+) -> Vec<Rect> {
+    frame.render_widget(Block::default().style(theme::base()), frame.area());
+    for component in components.iter_mut() {
+        component.reset_layout();
+    }
+
+    if frame.area().width < 65 || frame.area().height < 26 {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled("[ DISPLAY LINK FAILURE ]", theme::label())),
+                Line::from(Span::styled(
+                    "MINIMUM GRID: 65 × 26  //  CTRL+C TO ABORT",
+                    Style::default().fg(theme::MUTED),
+                )),
+            ])
+            .alignment(Alignment::Center),
+            frame.area(),
+        );
+        return Vec::new();
+    }
+
+    let [masthead, tabs, body, footer] = Layout::vertical([
+        Constraint::Length(6),
         Constraint::Length(3),
-        Constraint::Fill(1),
+        Constraint::Min(14),
         Constraint::Length(3),
     ])
     .areas(frame.area());
 
-    let uptime = app.uptime().as_secs();
+    let logo = LOGO
+        .iter()
+        .map(|row| {
+            Line::from(Span::styled(
+                *row,
+                Style::default()
+                    .fg(theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ))
+        })
+        .collect::<Vec<_>>();
+    frame.render_widget(
+        Paragraph::new(logo)
+            .alignment(Alignment::Center)
+            .style(Style::default().bg(theme::VOID)),
+        masthead,
+    );
 
-    let interface = app.network.interface.as_deref().unwrap_or("N/A");
-    let ipv4 = app.network.ipv4.as_deref().unwrap_or("N/A");
-    let gateway = app.network.gateway.as_deref().unwrap_or("N/A");
+    let tab_block = Block::default()
+        .title(Span::styled(
+            "[ NETWORK ENDPOINT TRACER // CONTROL DECK ]",
+            Style::default().fg(theme::MUTED),
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(theme::GRID))
+        .style(Style::default().bg(theme::PANEL));
+    let tab_inner = tab_block.inner(tabs);
+    frame.render_widget(tab_block, tabs);
 
-    let link_status = if app.network.has_link() {
-        "ACTIVE"
-    } else {
-        "UNAVAILABLE"
-    };
+    let tab_areas = Layout::horizontal(vec![Constraint::Fill(1); components.len()])
+        .split(tab_inner)
+        .to_vec();
+    for (index, component) in components.iter().enumerate() {
+        let (prefix, style) = if index == active {
+            (
+                ">",
+                Style::default()
+                    .fg(theme::VOID)
+                    .bg(theme::CYAN)
+                    .add_modifier(Modifier::BOLD),
+            )
+        } else {
+            (" ", Style::default().fg(theme::TEXT).bg(theme::PANEL))
+        };
+        frame.render_widget(
+            Paragraph::new(format!(
+                " {prefix} F{}  {} ",
+                index + 1,
+                component.title().to_uppercase()
+            ))
+            .style(style)
+            .alignment(Alignment::Center),
+            tab_areas[index],
+        );
+    }
 
-    let header = Paragraph::new("NETracer // NETWORK DIAGNOSIS")
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::ALL));
+    components[active].render(frame, body);
 
-    let body = Paragraph::new(format!(
-        "\
-    \nSYSTEM READY
+    let footer_text = Line::from(vec![
+        Span::styled(
+            " READY ",
+            Style::default()
+                .fg(theme::VOID)
+                .bg(theme::GREEN)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled("  ", theme::base()),
+        Span::styled(components[active].help(), Style::default().fg(theme::TEXT)),
+        Span::styled("  │  TAB: module ", Style::default().fg(theme::MUTED)),
+    ]);
+    frame.render_widget(
+        Paragraph::new(footer_text).block(
+            Block::default()
+                .title("[ COMMAND LINE ]")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::GRID)),
+        ),
+        footer,
+    );
 
-    HOSTNAME     {}
-    INTERFACE    {}
-    IPv4         {}
-    GATEWAY      {}
-    LINK         {}
-
-    UPTIME       {}s",
-        app.network.hostname, interface, ipv4, gateway, link_status, uptime,
-    ))
-    .alignment(Alignment::Center)
-    .block(Block::new().title(" NODE STATUS ").borders(Borders::ALL));
-
-    let footer = Paragraph::new("[Q] Quit   [ESC] Exit")
-        .alignment(Alignment::Center)
-        .block(Block::new().borders(Borders::ALL));
-
-    frame.render_widget(header, header_area);
-    frame.render_widget(body, body_area);
-    frame.render_widget(footer, footer_area);
+    tab_areas
 }
