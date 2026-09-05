@@ -14,7 +14,11 @@ const LOGO: [&str; 4] = [
     " /    / _/  / / / __/ _ `/ __/ -_) __/",
     "/_/|_/___/ /_/ /_/  \\_,_/\\__/\\__/_/   ",
 ];
-const COMPACT_LOGO: [&str; 2] = ["⡷⣸ ⣏⡉ ⢹⠁ ⡀⣀ ⢀⣀ ⢀⣀ ⢀⡀ ⡀⣀", "⠇⠹ ⠧⠤ ⠸  ⠏  ⠣⠼ ⠣⠤ ⠣⠭ ⠏"];
+const ITALIC_LOGO: [&str; 3] = [
+    r"  _______                 ",
+    r" /| )(_   /  \_ _ _ _ _ ",
+    r"/ |/ /__ (  / (/( (-/   ",
+];
 
 pub(crate) fn render(
     frame: &mut Frame,
@@ -44,7 +48,7 @@ pub(crate) fn render(
     let masthead_height = if frame.area().height >= 27 && frame.area().width >= 50 {
         5
     } else if frame.area().height >= 20 && frame.area().width >= 38 {
-        3
+        4
     } else {
         1
     };
@@ -60,8 +64,8 @@ pub(crate) fn render(
 
     let logo_rows: &[&str] = if masthead_height == 5 {
         &LOGO
-    } else if masthead_height == 3 {
-        &COMPACT_LOGO
+    } else if masthead_height == 4 {
+        &ITALIC_LOGO
     } else {
         &["N E T R A C E R  //  NETWORK DIAGNOSTICS"]
     };

@@ -34,7 +34,7 @@ pub(super) fn render(
     let [information, graphs, statistics] = Layout::vertical([
         Constraint::Length(information_height),
         Constraint::Min(3),
-        Constraint::Length(3),
+        Constraint::Length(5),
     ])
     .areas(dashboard);
     let graph_areas = if graphs.height < 9 {
@@ -152,8 +152,8 @@ fn render_information(
 ) {
     let palette = theme::current();
     let interface = traffic.selected_interface();
-    let configured = interface.is_some_and(|item| !item.ipv4.is_empty());
-    let (state, state_color) = if traffic.is_general() {
+    let configured = interface.is_some_and(|item| !item.ipv4.is_empty() || !item.ipv6.is_empty());
+    let (state, state_color) = if traffic.is_all() {
         ("AGGREGATE", palette.cyan)
     } else if interface.is_none() {
         ("UNAVAILABLE", palette.red)
@@ -162,17 +162,19 @@ fn render_information(
     } else {
         ("NO ADDRESS", palette.orange)
     };
+
     let address = interface
-        .and_then(|item| item.ipv4.first())
+        .and_then(|item| item.ipv4.first().or_else(|| item.ipv6.first()))
         .map(String::as_str)
-        .unwrap_or(if traffic.is_general() {
+        .unwrap_or(if traffic.is_all() {
             "All interfaces"
         } else {
             "Not available"
         });
+
     let gateway = interface
         .and_then(|item| item.gateway.as_deref())
-        .unwrap_or(if traffic.is_general() {
+        .unwrap_or(if traffic.is_all() {
             "Multiple / none"
         } else {
             "Not available"
@@ -188,7 +190,7 @@ fn render_information(
             field("UPTIME", &format_duration(uptime), palette.muted),
         ]),
         Line::from(vec![
-            field("IPv4", address, palette.text),
+            field("ADDR", address, palette.text),
             field("GW", gateway, palette.text),
         ]),
         Line::from(vec![
@@ -285,18 +287,23 @@ fn render_statistics(frame: &mut Frame, area: Rect, series: &TrafficSeries) {
 }
 
 fn metric_line(current: Option<f64>, total: u64, peak: f64, color: Color) -> Paragraph<'static> {
+    let palette = theme::current();
     let current = current.map(format_rate).unwrap_or_else(|| "N/A".into());
-    Paragraph::new(Line::from(vec![
-        Span::styled(format!(" NOW {current}"), Style::default().fg(color).bold()),
-        Span::styled(
-            format!(
-                "  TOTAL {}  PEAK {}",
-                format_bytes(total),
-                format_rate(peak)
-            ),
-            Style::default().fg(theme::current().text),
-        ),
-    ]))
+
+    Paragraph::new(vec![
+        Line::from(Span::styled(
+            format!(" NOW   {current}"),
+            Style::default().fg(color).bold(),
+        )),
+        Line::from(Span::styled(
+            format!(" TOTAL {}", format_bytes(total)),
+            Style::default().fg(palette.text),
+        )),
+        Line::from(Span::styled(
+            format!(" PEAK  {}", format_rate(peak)),
+            Style::default().fg(palette.text),
+        )),
+    ])
 }
 
 fn graph_segments(series: &TrafficSeries, receive: bool, divisor: f64) -> Vec<Vec<(f64, f64)>> {

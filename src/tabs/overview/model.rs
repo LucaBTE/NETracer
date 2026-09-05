@@ -116,7 +116,10 @@ impl TrafficSeries {
         self.peak_tx = self.peak_tx.max(rates.tx_bytes_per_second);
         self.current = Some(rates);
         self.push_history(at, Some(rates));
-        self.status = format!("Monitoring {} of {total} interfaces", samples.len());
+        self.status = format!(
+            "Monitoring {}/{total} interfaces. VPNs and bridges may count traffic twice",
+            samples.len()
+        );
     }
 
     pub fn history(&self) -> &VecDeque<HistoryPoint> {
@@ -144,7 +147,7 @@ pub struct TrafficModel {
     interface_names: Vec<String>,
     interfaces: Vec<InterfaceSnapshot>,
     series: HashMap<String, TrafficSeries>,
-    general: TrafficSeries,
+    all: TrafficSeries,
 }
 
 impl TrafficModel {
@@ -155,12 +158,12 @@ impl TrafficModel {
             interface_names: Vec::new(),
             interfaces: Vec::new(),
             series: HashMap::new(),
-            general: TrafficSeries::new("Waiting for interface samples"),
+            all: TrafficSeries::new("Waiting for interface samples"),
         }
     }
 
     pub fn choices(&self) -> impl Iterator<Item = &str> {
-        std::iter::once("General").chain(self.interface_names.iter().map(String::as_str))
+        std::iter::once("All").chain(self.interface_names.iter().map(String::as_str))
     }
 
     pub fn selected_index(&self) -> usize {
@@ -169,16 +172,16 @@ impl TrafficModel {
 
     pub fn selected_name(&self) -> &str {
         if self.selected == 0 {
-            "General"
+            "All"
         } else {
             self.interface_names
                 .get(self.selected - 1)
                 .map(String::as_str)
-                .unwrap_or("General")
+                .unwrap_or("All")
         }
     }
 
-    pub fn is_general(&self) -> bool {
+    pub fn is_all(&self) -> bool {
         self.selected == 0
     }
 
@@ -197,12 +200,12 @@ impl TrafficModel {
 
     pub fn selected_series(&self) -> &TrafficSeries {
         if self.selected == 0 {
-            &self.general
+            &self.all
         } else {
             self.interface_names
                 .get(self.selected - 1)
                 .and_then(|name| self.series.get(name))
-                .unwrap_or(&self.general)
+                .unwrap_or(&self.all)
         }
     }
 
@@ -254,7 +257,7 @@ impl TrafficModel {
                 aggregate.push(sample);
             }
         }
-        self.general
+        self.all
             .record_aggregate(at, &aggregate, self.interface_names.len());
     }
 
@@ -262,8 +265,8 @@ impl TrafficModel {
         for series in self.series.values_mut() {
             series.record(at, None);
         }
-        self.general.current = None;
-        self.general.push_history(at, None);
-        self.general.status = format!("Data unavailable: {message}");
+        self.all.current = None;
+        self.all.push_history(at, None);
+        self.all.status = format!("Data unavailable: {message}");
     }
 }
