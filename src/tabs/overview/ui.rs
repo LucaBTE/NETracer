@@ -22,16 +22,27 @@ pub(super) fn render(
     list_area: &mut Rect,
     list_offset: &mut usize,
 ) {
+    if area.height < 10 || area.width < 42 {
+        render_tiny(frame, area, hostname, traffic, list_area, list_offset);
+        return;
+    }
+
+    let sidebar_width = if area.width < 60 { 16 } else { 21 };
     let [interfaces, dashboard] =
-        Layout::horizontal([Constraint::Length(21), Constraint::Min(44)]).areas(area);
+        Layout::horizontal([Constraint::Length(sidebar_width), Constraint::Min(26)]).areas(area);
+    let information_height = if area.height < 16 { 4 } else { 6 };
     let [information, graphs, statistics] = Layout::vertical([
-        Constraint::Length(6),
-        Constraint::Min(7),
+        Constraint::Length(information_height),
+        Constraint::Min(3),
         Constraint::Length(3),
     ])
     .areas(dashboard);
-    let [rx_graph, tx_graph] =
-        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).areas(graphs);
+    let graph_areas = if graphs.height < 9 {
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(graphs)
+    } else {
+        Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)]).split(graphs)
+    };
+    let (rx_graph, tx_graph) = (graph_areas[0], graph_areas[1]);
 
     render_interfaces(frame, interfaces, traffic, list_offset);
     *list_area = interfaces;
@@ -41,6 +52,49 @@ pub(super) fn render(
     render_chart(frame, rx_graph, series, true);
     render_chart(frame, tx_graph, series, false);
     render_statistics(frame, statistics, series);
+}
+
+fn render_tiny(
+    frame: &mut Frame,
+    area: Rect,
+    hostname: &str,
+    traffic: &TrafficModel,
+    list_area: &mut Rect,
+    list_offset: &mut usize,
+) {
+    let list_width = (area.width / 2).clamp(12, 18);
+    let [interfaces, summary] =
+        Layout::horizontal([Constraint::Length(list_width), Constraint::Min(12)]).areas(area);
+    render_interfaces(frame, interfaces, traffic, list_offset);
+    *list_area = interfaces;
+
+    let palette = theme::current();
+    let series = traffic.selected_series();
+    let rx = series
+        .current
+        .map(|rates| format_rate(rates.rx_bytes_per_second))
+        .unwrap_or_else(|| "N/A".into());
+    let tx = series
+        .current
+        .map(|rates| format_rate(rates.tx_bytes_per_second))
+        .unwrap_or_else(|| "N/A".into());
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                traffic.selected_name().to_owned(),
+                theme::label(),
+            )),
+            Line::from(format!("RX  {rx}")),
+            Line::from(format!("TX  {tx}")),
+            Line::from(Span::styled(
+                hostname.to_owned(),
+                Style::default().fg(palette.muted),
+            )),
+        ])
+        .style(Style::default().fg(palette.text).bg(palette.panel))
+        .block(panel("[ LIVE TRAFFIC ]")),
+        summary,
+    );
 }
 
 fn render_interfaces(frame: &mut Frame, area: Rect, traffic: &TrafficModel, offset: &mut usize) {
@@ -124,30 +178,32 @@ fn render_information(
             "Not available"
         });
 
+    let mut lines = vec![
+        Line::from(vec![
+            field("SOURCE", traffic.selected_name(), palette.cyan),
+            field("STATE", state, state_color),
+        ]),
+        Line::from(vec![
+            field("HOST", hostname, palette.text),
+            field("UPTIME", &format_duration(uptime), palette.muted),
+        ]),
+        Line::from(vec![
+            field("IPv4", address, palette.text),
+            field("GW", gateway, palette.text),
+        ]),
+        Line::from(vec![
+            Span::styled(" STATUS ", Style::default().fg(palette.muted)),
+            Span::styled(
+                traffic.selected_series().status.as_str(),
+                Style::default().fg(palette.muted),
+            ),
+        ]),
+    ];
+    lines.truncate(usize::from(area.height.saturating_sub(2)));
     frame.render_widget(
-        Paragraph::new(vec![
-            Line::from(vec![
-                field("SOURCE", traffic.selected_name(), palette.cyan),
-                field("STATE", state, state_color),
-            ]),
-            Line::from(vec![
-                field("HOST", hostname, palette.text),
-                field("UPTIME", &format_duration(uptime), palette.muted),
-            ]),
-            Line::from(vec![
-                field("IPv4", address, palette.text),
-                field("GW", gateway, palette.text),
-            ]),
-            Line::from(vec![
-                Span::styled(" STATUS ", Style::default().fg(palette.muted)),
-                Span::styled(
-                    traffic.selected_series().status.as_str(),
-                    Style::default().fg(palette.muted),
-                ),
-            ]),
-        ])
-        .style(Style::default().bg(palette.panel))
-        .block(panel("[ SOURCE INFORMATION ]")),
+        Paragraph::new(lines)
+            .style(Style::default().bg(palette.panel))
+            .block(panel("[ SOURCE INFORMATION ]")),
         area,
     );
 }

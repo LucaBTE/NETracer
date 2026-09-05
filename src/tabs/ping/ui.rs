@@ -13,13 +13,16 @@ use super::{
 };
 
 pub(super) fn render(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
-    let [input, table, details, message] = Layout::vertical([
+    let show_details = area.height >= 14;
+    let details_height = if show_details { 6 } else { 0 };
+    let areas = Layout::vertical([
         Constraint::Length(3),
-        Constraint::Min(4),
-        Constraint::Length(6),
+        Constraint::Min(1),
+        Constraint::Length(details_height),
         Constraint::Length(1),
     ])
-    .areas(area);
+    .split(area);
+    let (input, table, details, message) = (areas[0], areas[1], areas[2], areas[3]);
 
     tab.input_area = input;
     tab.table_area = table;
@@ -34,22 +37,24 @@ pub(super) fn render(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
         .map(details_text)
         .unwrap_or_else(|| "No saved targets. Press / to enter an address or hostname.".into());
 
-    frame.render_widget(
-        Paragraph::new(text)
-            .style(
-                Style::default()
-                    .fg(theme::current().text)
-                    .bg(theme::current().panel_active),
-            )
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::default()
-                    .title("[ TARGET TELEMETRY ]")
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(theme::current().grid)),
-            ),
-        details,
-    );
+    if show_details {
+        frame.render_widget(
+            Paragraph::new(text)
+                .style(
+                    Style::default()
+                        .fg(theme::current().text)
+                        .bg(theme::current().panel_active),
+                )
+                .wrap(Wrap { trim: false })
+                .block(
+                    Block::default()
+                        .title("[ TARGET TELEMETRY ]")
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(theme::current().grid)),
+                ),
+            details,
+        );
+    }
 
     frame.render_widget(
         Paragraph::new(tab.message.as_str())
@@ -125,6 +130,8 @@ fn render_input(frame: &mut Frame, area: Rect, tab: &PingTab) {
 }
 
 fn render_table(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
+    let compact = area.width < 50;
+    let medium = area.width < 70;
     let rows = tab
         .entries
         .iter()
@@ -140,54 +147,80 @@ fn render_table(frame: &mut Frame, area: Rect, tab: &mut PingTab) {
                 .map(|time| format!("{}s ago", time.elapsed().as_secs(),))
                 .unwrap_or_else(|| "-".into());
 
-            Row::new(vec![
+            let mut cells = vec![
                 Cell::from(format!("  {}", entry.target))
                     .style(Style::default().fg(theme::current().text)),
                 Cell::from(status(&entry.state)).style(status_style(&entry.state)),
-                Cell::from(milliseconds(latency)).style(Style::default().fg(theme::current().cyan)),
-                Cell::from(last_run).style(Style::default().fg(theme::current().muted)),
-                Cell::from("PING").style(
-                    Style::default()
-                        .fg(theme::current().orange)
-                        .add_modifier(Modifier::BOLD),
-                ),
-            ])
-            .style(Style::default().bg(theme::current().panel))
+            ];
+            if !compact {
+                cells.push(
+                    Cell::from(milliseconds(latency))
+                        .style(Style::default().fg(theme::current().cyan)),
+                );
+            }
+            if !medium {
+                cells.push(Cell::from(last_run).style(Style::default().fg(theme::current().muted)));
+                cells.push(
+                    Cell::from("PING").style(
+                        Style::default()
+                            .fg(theme::current().orange)
+                            .add_modifier(Modifier::BOLD),
+                    ),
+                );
+            }
+            Row::new(cells).style(Style::default().bg(theme::current().panel))
         })
         .collect::<Vec<_>>();
 
-    let table = Table::new(
-        rows,
-        [
-            Constraint::Fill(1),
-            Constraint::Length(15),
-            Constraint::Length(12),
-            Constraint::Length(11),
-            Constraint::Length(8),
-        ],
-    )
-    .header(
-        Row::new(["  TARGET", "STATUS", "LATENCY", "LAST RUN", "ACTION"]).style(
+    let (headers, widths) = if compact {
+        (
+            vec!["  TARGET", "STATUS"],
+            vec![Constraint::Fill(1), Constraint::Length(15)],
+        )
+    } else if medium {
+        (
+            vec!["  TARGET", "STATUS", "LATENCY"],
+            vec![
+                Constraint::Fill(1),
+                Constraint::Length(15),
+                Constraint::Length(12),
+            ],
+        )
+    } else {
+        (
+            vec!["  TARGET", "STATUS", "LATENCY", "LAST RUN", "ACTION"],
+            vec![
+                Constraint::Fill(1),
+                Constraint::Length(15),
+                Constraint::Length(12),
+                Constraint::Length(11),
+                Constraint::Length(8),
+            ],
+        )
+    };
+    let table = Table::new(rows, widths)
+        .header(
+            Row::new(headers).style(
+                Style::default()
+                    .fg(theme::current().void)
+                    .bg(theme::current().text)
+                    .bold(),
+            ),
+        )
+        .row_highlight_style(
             Style::default()
-                .fg(theme::current().void)
-                .bg(theme::current().text)
-                .bold(),
-        ),
-    )
-    .row_highlight_style(
-        Style::default()
-            .fg(theme::current().text)
-            .bg(theme::current().grid)
-            .add_modifier(Modifier::BOLD),
-    )
-    .block(
-        Block::default()
-            .title("[ RECENT TARGETS // PROBE QUEUE ]")
-            .title_bottom("[ ↑/↓ SELECT ][ ENTER PING ][ DEL REMOVE ]")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(theme::current().grid)),
-    )
-    .style(Style::default().bg(theme::current().panel));
+                .fg(theme::current().text)
+                .bg(theme::current().grid)
+                .add_modifier(Modifier::BOLD),
+        )
+        .block(
+            Block::default()
+                .title("[ RECENT TARGETS // PROBE QUEUE ]")
+                .title_bottom("[ ↑/↓ SELECT ][ ENTER PING ][ DEL REMOVE ]")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(theme::current().grid)),
+        )
+        .style(Style::default().bg(theme::current().panel));
 
     frame.render_stateful_widget(table, area, &mut tab.table_state);
 }

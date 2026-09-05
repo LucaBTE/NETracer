@@ -14,6 +14,7 @@ const LOGO: [&str; 4] = [
     " /    / _/  / / / __/ _ `/ __/ -_) __/",
     "/_/|_/___/ /_/ /_/  \\_,_/\\__/\\__/_/   ",
 ];
+const COMPACT_LOGO: [&str; 2] = ["⡷⣸ ⣏⡉ ⢹⠁ ⡀⣀ ⢀⣀ ⢀⣀ ⢀⡀ ⡀⣀", "⠇⠹ ⠧⠤ ⠸  ⠏  ⠣⠼ ⠣⠤ ⠣⠭ ⠏"];
 
 pub(crate) fn render(
     frame: &mut Frame,
@@ -25,12 +26,12 @@ pub(crate) fn render(
         component.reset_layout();
     }
 
-    if frame.area().width < 65 || frame.area().height < 30 {
+    if frame.area().width < 30 || frame.area().height < 10 {
         frame.render_widget(
             Paragraph::new(vec![
                 Line::from(Span::styled("[ DISPLAY LINK FAILURE ]", theme::label())),
                 Line::from(Span::styled(
-                    "MINIMUM GRID: 65 × 30  //  CTRL+C TO ABORT",
+                    "Resize the terminal  //  Ctrl+C to quit",
                     Style::default().fg(theme::current().muted),
                 )),
             ])
@@ -40,15 +41,31 @@ pub(crate) fn render(
         return Vec::new();
     }
 
-    let [masthead, tabs, body, footer] = Layout::vertical([
-        Constraint::Length(5),
+    let masthead_height = if frame.area().height >= 27 && frame.area().width >= 50 {
+        5
+    } else if frame.area().height >= 20 && frame.area().width >= 38 {
+        3
+    } else {
+        1
+    };
+    let footer_height = if frame.area().height >= 18 { 3 } else { 1 };
+    let areas = Layout::vertical([
+        Constraint::Length(masthead_height),
         Constraint::Length(3),
-        Constraint::Min(14),
-        Constraint::Length(3),
+        Constraint::Min(5),
+        Constraint::Length(footer_height),
     ])
-    .areas(frame.area());
+    .split(frame.area());
+    let (masthead, tabs, body, footer) = (areas[0], areas[1], areas[2], areas[3]);
 
-    let logo = LOGO
+    let logo_rows: &[&str] = if masthead_height == 5 {
+        &LOGO
+    } else if masthead_height == 3 {
+        &COMPACT_LOGO
+    } else {
+        &["N E T R A C E R  //  NETWORK DIAGNOSTICS"]
+    };
+    let logo = logo_rows
         .iter()
         .map(|row| {
             Line::from(Span::styled(
@@ -77,9 +94,10 @@ pub(crate) fn render(
     let tab_inner = tab_block.inner(tabs);
     frame.render_widget(tab_block, tabs);
 
+    let compact_width = frame.area().width < 55;
     let tab_constraints = components.iter().map(|component| {
         if component.id() == "settings" {
-            Constraint::Length(18)
+            Constraint::Length(if compact_width { 10 } else { 18 })
         } else {
             Constraint::Fill(1)
         }
@@ -104,14 +122,19 @@ pub(crate) fn render(
                     .bg(theme::current().panel),
             )
         };
+        let title = if compact_width {
+            match component.id() {
+                "overview" => "OVR",
+                "settings" => "SET",
+                _ => "PING",
+            }
+        } else {
+            component.title()
+        };
         frame.render_widget(
-            Paragraph::new(format!(
-                " {prefix} F{}  {} ",
-                index + 1,
-                component.title().to_uppercase()
-            ))
-            .style(style)
-            .alignment(Alignment::Center),
+            Paragraph::new(format!(" {prefix} {} {} ", index + 1, title.to_uppercase()))
+                .style(style)
+                .alignment(Alignment::Center),
             tab_areas[index],
         );
     }
@@ -136,15 +159,20 @@ pub(crate) fn render(
             Style::default().fg(theme::current().muted),
         ),
     ]);
-    frame.render_widget(
-        Paragraph::new(footer_text).block(
-            Block::default()
-                .title("[ COMMAND LINE ]")
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(theme::current().grid)),
-        ),
-        footer,
-    );
+    let footer_widget = Paragraph::new(footer_text);
+    if footer_height == 3 {
+        frame.render_widget(
+            footer_widget.block(
+                Block::default()
+                    .title("[ COMMAND LINE ]")
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(theme::current().grid)),
+            ),
+            footer,
+        );
+    } else {
+        frame.render_widget(footer_widget, footer);
+    }
 
     tab_areas
 }
