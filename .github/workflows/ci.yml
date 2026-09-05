@@ -1,0 +1,36 @@
+name: Rust
+on:
+  push:
+    branches: ["refactor/modular-components"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable Rust
+        run: rustup update stable --no-self-update && rustup default stable && rustup component add rustfmt clippy
+      - name: Format and resolve dependencies
+        run: cargo fmt --all && cargo generate-lockfile
+      - name: Check all targets
+        run: cargo check --locked --all-targets
+      - name: Test
+        run: cargo test --locked --all-targets
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Save reproducible sources
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refactor-validation
+          path: |
+            Cargo.lock
+            src/
+            examples/
+          retention-days: 3

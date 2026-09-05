@@ -1,16 +1,10 @@
-mod app;
-mod network;
-mod ping;
-mod ui;
-
 use std::io;
 
-use app::App;
+use netracer::{app::App, tabs, terminal::TerminalSession};
 
-fn main() -> io::Result<()> {
-    //app state
-    let mut app = App::new();
-
-    //Ratatui prepares terminal and pass app control
-    ratatui::run(|terminal| app.run(terminal))
+#[tokio::main]
+async fn main() -> io::Result<()> {
+    let mut app = App::new(tabs::builtins())?;
+    let mut terminal = TerminalSession::new()?;
+    app.run(terminal.terminal()).await
 }

@@ -4,7 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crossterm = "0.29.0"
+crossterm = { version = "0.29.0", features = ["event-stream"] }
+directories = "6.0"
+futures-util = "0.3"
 hostname = "0.4.2"
 netdev = "0.46.2"
 ratatui = "0.30.2"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time", "io-util", "sync"] }
+tui-input = { version = "0.15.4", default-features = false, features = ["crossterm"] }
