@@ -9,10 +9,13 @@ use ratatui::DefaultTerminal;
 
 use crate::ui;
 
+use crate::ping::{self, PingResult};
+
 pub struct App {
     running: bool,
     started_at: Instant,
     pub network: NetworkInfo,
+    pub ping: PingResult,
 }
 
 //App functions
@@ -23,6 +26,7 @@ impl App {
             running: true,
             started_at: Instant::now(),
             network: NetworkInfo::discover(),
+            ping: ping::ping("1.1.1.1"),
         }
     }
 

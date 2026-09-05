@@ -1,5 +1,6 @@
 mod app;
 mod network;
+mod ping;
 mod ui;
 
 use std::io;

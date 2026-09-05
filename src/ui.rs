@@ -32,6 +32,18 @@ pub fn render(frame: &mut Frame, app: &App) {
         .alignment(Alignment::Center)
         .block(Block::new().borders(Borders::ALL));
 
+    let ping_status = if app.ping.success {
+        "ONLINE"
+    } else {
+        "OFFLINE"
+    };
+
+    let latency = app
+        .ping
+        .latency_ms
+        .map(|value| format!("{value:.1} ms"))
+        .unwrap_or_else(|| "N/A".to_string());
+
     let body = Paragraph::new(format!(
         "\
     \nSYSTEM READY
@@ -42,8 +54,12 @@ pub fn render(frame: &mut Frame, app: &App) {
     GATEWAY      {}
     LINK         {}
 
+    TARGET       1.1.1.1
+    STATUS       {}
+    LATENCY      {}
+
     UPTIME       {}s",
-        app.network.hostname, interface, ipv4, gateway, link_status, uptime,
+        app.network.hostname, interface, ipv4, gateway, link_status, ping_status, latency, uptime,
     ))
     .alignment(Alignment::Center)
     .block(Block::new().title(" NODE STATUS ").borders(Borders::ALL));
